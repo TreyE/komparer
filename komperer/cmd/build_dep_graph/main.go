@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,6 +17,8 @@ import (
 	kyaml "sigs.k8s.io/yaml"
 
 	"github.com/oliveagle/jsonpath"
+
+	"github.com/ideacrew/komparer/internal"
 )
 
 func glob(dir string, exts []string) ([]string, error) {
@@ -94,42 +95,14 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 					pVert := gograph.NewVertex(pPath)
 					envdefgraph.AddEdge(fVert, pVert)
 				}
-				//return
 			}
 		}
-		//return
-		/*
-			for _, node := range resMap.Resources() {
-				kind := node.GetKind()
-				if kind == "Deployment" || kind == "StatefulSet" {
-					f_r_nodes := getMapField(node.RNode, "spec")
-					if f_r_nodes != nil {
-						r_vals, err2 := f_r_nodes.GetFieldValue("replicas")
-						if err2 == nil {
-							nodeTotals[node.GetName()] = r_vals.(int)
-							containers := getMapField(*getMapField(*getMapField(*f_r_nodes, "template"), "spec"), "containers")
-							cs, err3 := containers.Elements()
-							if err3 == nil {
-								for _, c := range cs {
-									res := getMapField(*c, "resources")
-									if res != nil {
-										var v *resourceBucket
-										data, _ := res.MarshalJSON()
-										json.Unmarshal(data, &v)
-										if v != nil {
-											nodeRes[node.GetName()] = *v
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}*/
 	}
 }
 
 func main() {
+	rootPath := os.Args[1]
+	storePath := os.Args[2]
 	// kustomize.yaml => other yamls graph
 	// also our final dependency graph
 	graph := gograph.New[string](gograph.Directed())
@@ -137,12 +110,11 @@ func main() {
 	envgraph := gograph.New[string](gograph.Directed())
 	// environment map name => environment definition yaml graph
 	envdefgraph := gograph.New[string](gograph.Directed())
-	// list
+	// list or environment map names
 	envMaplist := make(map[string]bool)
-	//statsForEnv("environments/prod", "/Users/tevans/proj/cme_k8s/", graph, envgraph, envdefgraph, &envMaplist)
-	statsForEnv("prod", "/Users/tevans/proj/cme_k8s/", graph, envgraph, envdefgraph, &envMaplist)
-	statsForEnv("preprod", "/Users/tevans/proj/cme_k8s/", graph, envgraph, envdefgraph, &envMaplist)
-	statsForEnv("pvt-2", "/Users/tevans/proj/cme_k8s/", graph, envgraph, envdefgraph, &envMaplist)
+	statsForEnv("prod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	statsForEnv("preprod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	statsForEnv("pvt-2", rootPath, graph, envgraph, envdefgraph, &envMaplist)
 	// Link the maps
 	for k, _ := range envMaplist {
 		v1 := envgraph.GetVertexByID(k)
@@ -159,10 +131,9 @@ func main() {
 			}
 		}
 	}
-	dependsOnPath := gograph.NewVertex("base/config/redis-configmap.yaml")
-	for _, v := range graph.EdgesOf(dependsOnPath) {
-		if v.Destination().Label() == "base/config/redis-configmap.yaml" {
-			fmt.Println(v.Source().Label())
-		}
+	vData := internal.ImpactGraph{
+		Data: graph,
 	}
+	b, _ := vData.GobEncode()
+	os.WriteFile(storePath, b, 0644)
 }
