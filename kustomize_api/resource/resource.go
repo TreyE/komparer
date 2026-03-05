@@ -6,6 +6,7 @@ package resource
 import (
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"sigs.k8s.io/kustomize/api/filters/patchstrategicmerge"
@@ -160,14 +161,15 @@ func (r *Resource) DeepCopy() *Resource {
 // the resource.
 // TODO: move to RNode, use GetMeta to improve performance.
 // TODO: make a version of mergeStringMaps that is build-annotation aware
-//   to avoid repeatedly setting refby and genargs annotations
+//
+//	to avoid repeatedly setting refby and genargs annotations
+//
 // Must remove the kustomize bit at the end.
 func (r *Resource) CopyMergeMetaDataFieldsFrom(other *Resource) error {
 	if err := r.SetLabels(
 		mergeStringMaps(other.GetLabels(), r.GetLabels())); err != nil {
 		return fmt.Errorf("copyMerge cannot set labels - %w", err)
 	}
-
 	ra := r.GetAnnotations()
 	_, enableNameSuffixHash := ra[utils.BuildAnnotationsGenAddHashSuffix]
 	merged := mergeStringMapsWithBuildAnnotations(other.GetAnnotations(), ra)
@@ -494,6 +496,9 @@ func (r *Resource) AppendRefVarName(variable types.Var) {
 // ApplySmPatch applies the provided strategic merge patch.
 func (r *Resource) ApplySmPatch(patch *Resource) error {
 	n, ns, k := r.GetName(), r.GetNamespace(), r.GetKind()
+
+	patch.MergeOriginalSourcePaths(r)
+
 	if patch.NameChangeAllowed() || patch.KindChangeAllowed() {
 		r.StorePreviousId()
 	}
@@ -525,11 +530,74 @@ func (r *Resource) ApplyFilter(f kio.Filter) error {
 	return err
 }
 
+func (r *Resource) MergeOriginalSourcePaths(original *Resource) {
+	originalAnnotations := original.GetAnnotations()
+	patchAnnotations := r.GetAnnotations()
+	if oVal, hasOrig := originalAnnotations[utils.SourcePathsAnnotation]; hasOrig {
+		if nVal, hasNew := patchAnnotations[utils.SourcePathsAnnotation]; hasNew {
+			patchAnnotations[utils.SourcePathsAnnotation] = mergeSourcePathLists(oVal, nVal)
+		} else {
+			patchAnnotations[utils.SourcePathsAnnotation] = oVal
+		}
+	} else if nVal, hasNew := patchAnnotations[utils.SourcePathsAnnotation]; hasNew {
+		patchAnnotations[utils.SourcePathsAnnotation] = nVal
+	}
+	r.SetAnnotations(patchAnnotations)
+}
+
+func (r *Resource) MergeRawSourcePathEntry(newOriginString string) string {
+	annos := r.GetAnnotations()
+	na, nerr := yaml.Marshal([]string{newOriginString})
+	if nerr != nil {
+		panic(nerr)
+	}
+	if oldEntry, hasOldEntry := annos[utils.SourcePathsAnnotation]; hasOldEntry {
+		return mergeSourcePathLists(oldEntry, string(na))
+	}
+	return string(na)
+}
+
+func mergeSourcePathLists(oldOriginString string, newOriginString string) string {
+	var oldOriginArray, newOriginArray []string
+	err := yaml.Unmarshal([]byte(oldOriginString), &oldOriginArray)
+	if err != nil {
+		return newOriginString
+	}
+	err = yaml.Unmarshal([]byte(newOriginString), &newOriginArray)
+	if err != nil {
+		return newOriginString
+	}
+	originArray := slices.Concat(oldOriginArray, newOriginArray)
+	var resultArray []string
+	seen := make(map[string]bool)
+	for _, v := range originArray {
+		if _, found := seen[v]; !found {
+			seen[v] = true
+			resultArray = append(resultArray, v)
+		}
+	}
+	resultOriginString, yErr := yaml.Marshal(resultArray)
+	if yErr != nil {
+		return newOriginString
+	}
+	return string(resultOriginString)
+}
+
 func mergeStringMaps(maps ...map[string]string) map[string]string {
 	result := map[string]string{}
 	for _, m := range maps {
 		for key, value := range m {
 			result[key] = value
+			if key == utils.SourcePathsAnnotation {
+				rVal, hasAnno := result[utils.SourcePathsAnnotation]
+				if hasAnno {
+					result[utils.SourcePathsAnnotation] = mergeSourcePathLists(rVal, value)
+				} else {
+					result[utils.SourcePathsAnnotation] = value
+				}
+			} else {
+				result[key] = value
+			}
 		}
 	}
 	return result

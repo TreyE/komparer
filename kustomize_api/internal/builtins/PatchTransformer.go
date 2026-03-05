@@ -3,10 +3,12 @@ package builtins
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	"sigs.k8s.io/kustomize/api/filters/patchjson6902"
+	"sigs.k8s.io/kustomize/api/internal/utils"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/api/resource"
 	"sigs.k8s.io/kustomize/api/types"
@@ -22,6 +24,7 @@ type PatchTransformerPlugin struct {
 	patchText string
 	// patchSource is patch source message
 	patchSource string
+	SourcePath  string
 	Path        string           `json:"path,omitempty"    yaml:"path,omitempty"`
 	Patch       string           `json:"patch,omitempty"   yaml:"patch,omitempty"`
 	Target      *types.Selector  `json:"target,omitempty"  yaml:"target,omitempty"`
@@ -49,6 +52,7 @@ func (p *PatchTransformerPlugin) Config(h *resmap.PluginHelpers, c []byte) error
 		}
 		p.patchText = string(loaded)
 		p.patchSource = fmt.Sprintf("[path: %q]", p.Path)
+		p.SourcePath = filepath.Join(h.Loader().RelRoot(), p.Path)
 	}
 
 	patchesSM, errSM := h.ResmapFactory().RF().SliceFromBytes([]byte(p.patchText))
@@ -68,6 +72,9 @@ func (p *PatchTransformerPlugin) Config(h *resmap.PluginHelpers, c []byte) error
 	if errSM == nil {
 		p.smPatches = patchesSM
 		for _, loadedPatch := range p.smPatches {
+			oldAnno := loadedPatch.GetAnnotations()
+			oldAnno[utils.SourcePathsAnnotation] = loadedPatch.MergeRawSourcePathEntry(p.SourcePath)
+			loadedPatch.SetAnnotations(oldAnno)
 			if p.Options == nil {
 				continue
 			}
@@ -110,7 +117,6 @@ func (p *PatchTransformerPlugin) transformStrategicMerge(m resmap.ResMap) error 
 		}
 		return errors.Wrap(m.ApplySmPatch(resource.MakeIdSet(selected), patch))
 	}
-
 	for _, patch := range p.smPatches {
 		target, err := m.GetById(patch.OrgId())
 		if err != nil {
@@ -146,6 +152,7 @@ func (p *PatchTransformerPlugin) transformJson6902(m resmap.ResMap) error {
 		for key, value := range internalAnnotations {
 			annotations[key] = value
 		}
+		annotations[utils.SourcePathsAnnotation] = res.MergeRawSourcePathEntry(p.SourcePath)
 		err = res.SetAnnotations(annotations)
 	}
 	return nil

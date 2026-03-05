@@ -26,4 +26,6 @@ const (
 	TransformerAnnotationKey = "alpha.config.kubernetes.io/transformations"
 
 	Enabled = "enabled"
+
+	SourcePathsAnnotation = konfig.ConfigAnnoDomain + "/sourcePaths"
 )

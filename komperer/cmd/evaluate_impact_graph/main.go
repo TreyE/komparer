@@ -1,30 +1,117 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
+	"maps"
 	"os"
-
-	"github.com/hmdsefi/gograph"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/ideacrew/komparer/internal"
 )
 
-func findDependentsOf(graph gograph.Graph[string], src string) []string {
-	dependsOnPath := gograph.NewVertex(src)
-	res := []string{}
-	for _, v := range graph.EdgesOf(dependsOnPath) {
-		if v.Destination().Label() == src {
-			res = append(res, v.Source().Label())
+const (
+	Added = iota
+	Removed
+	Modified
+)
+
+var changeKindMapping = map[string]int{
+	"A": Added,
+	"D": Removed,
+	"M": Modified,
+}
+
+type FileChange struct {
+	Kind int
+	Path string
+}
+
+type ChangeResults struct {
+	Paths        []string
+	Environments []string
+}
+
+func extractDiffChanges(diffDataPath string) []FileChange {
+	var fcs []FileChange
+
+	ddf, _ := os.Open(diffDataPath)
+
+	csvReader := csv.NewReader(ddf)
+
+	// 3. Set the delimiter to a tab character
+	csvReader.Comma = '\t'
+
+	records, _ := csvReader.ReadAll()
+
+	for _, r := range records {
+		fcs = append(
+			fcs,
+			FileChange{
+				Kind: changeKindMapping[r[0]],
+				Path: r[1],
+			},
+		)
+	}
+	return fcs
+}
+
+func makeChangeResults(impactedFiles []string) ChangeResults {
+	impactedEnvMap := make(map[string]bool)
+	sort.Strings(impactedFiles)
+	for _, impactedFile := range impactedFiles {
+		e, f := strings.CutPrefix(impactedFile, "environments/")
+		if f {
+			impactedEnvMap[strings.Split(e, "/")[0]] = true
 		}
 	}
-	return res
+	impactedEnvs := slices.Collect(maps.Keys(impactedEnvMap))
+	sort.Strings(impactedEnvs)
+	return ChangeResults{
+		Paths:        impactedFiles,
+		Environments: impactedEnvs,
+	}
+}
+
+func getDependentList(currentGraph internal.ImpactGraph, oldGraph internal.ImpactGraph, diffedFiles []FileChange) ChangeResults {
+	allChanges := make(map[string]bool)
+	for _, df := range diffedFiles {
+		if df.Kind != Removed {
+			deps := currentGraph.FindDependentsOf(df.Path)
+			for _, d := range deps {
+				allChanges[d] = true
+			}
+		}
+	}
+	for _, df := range diffedFiles {
+		if df.Kind == Removed {
+			deps := oldGraph.FindDependentsOf(df.Path)
+			for _, d := range deps {
+				allChanges[d] = true
+			}
+		}
+	}
+	stringies := slices.Collect(maps.Keys(allChanges))
+	return makeChangeResults(stringies)
 }
 
 func main() {
-	graphDataPath := os.Args[1]
+	currentGraphDataPath := os.Args[1]
+	oldGraphDataPath := os.Args[2]
+	diffDatapath := os.Args[3]
 
-	var ig internal.ImpactGraph
-	b, _ := os.ReadFile(graphDataPath)
-	ig.GobDecode(b)
-	fmt.Println(findDependentsOf(ig.Data, "base/config/redis-configmap.yaml"))
+	diffedFiles := extractDiffChanges(diffDatapath)
+	var cg, og internal.ImpactGraph
+	bc, _ := os.ReadFile(currentGraphDataPath)
+	bo, _ := os.ReadFile(oldGraphDataPath)
+	cg.GobDecode(bc)
+	og.GobDecode(bo)
+
+	allChanges := getDependentList(cg, og, diffedFiles)
+
+	for _, c := range allChanges.Paths {
+		fmt.Println(c)
+	}
 }

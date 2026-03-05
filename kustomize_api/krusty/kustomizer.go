@@ -110,7 +110,7 @@ func (b *Kustomizer) Run(
 			return nil, err
 		}
 	}
-	//m.RemoveBuildAnnotations()
+	m.RemoveBuildAnnotations()
 	if !utils.StringSliceContains(kt.Kustomization().BuildMetadata, types.OriginAnnotations) {
 		err = m.RemoveOriginAnnotations()
 		if err != nil {

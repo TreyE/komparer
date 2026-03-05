@@ -28,6 +28,7 @@ type KvLoader interface {
 
 // Loader interface exposes methods to read bytes.
 type Loader interface {
+	RelRoot() string
 
 	// Repo returns the repo location if this Loader was created from a url
 	// or the empty string otherwise.

@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/kustomize/api/ifc"
 	"sigs.k8s.io/kustomize/api/internal/generators"
 	"sigs.k8s.io/kustomize/api/internal/kusterr"
+	"sigs.k8s.io/kustomize/api/internal/utils"
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/kio"
@@ -102,6 +103,12 @@ func (rf *Factory) SliceFromPatches(
 		res, err := rf.SliceFromBytes(content)
 		if err != nil {
 			return nil, kusterr.Handler(err, string(path))
+		}
+		for _, oRes := range res {
+			spAnnotation, _ := yaml.Marshal([]string{string(path)})
+			oldAnnotations := oRes.GetAnnotations()
+			oldAnnotations[utils.SourcePathsAnnotation] = string(spAnnotation)
+			oRes.SetAnnotations(oldAnnotations)
 		}
 		result = append(result, res...)
 	}

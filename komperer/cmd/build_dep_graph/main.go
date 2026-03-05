@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,19 @@ import (
 
 	"github.com/ideacrew/komparer/internal"
 )
+
+func listEnvs(rootDir string) []string {
+	var eList []string
+	environmentPath := rootDir + "/environments/"
+	fEntries, _ := os.ReadDir(environmentPath)
+	for _, de := range fEntries {
+		if de.IsDir() {
+			n, _ := strings.CutPrefix(de.Name(), environmentPath)
+			eList = append(eList, n)
+		}
+	}
+	return eList
+}
 
 func glob(dir string, exts []string) ([]string, error) {
 	files := []string{}
@@ -57,6 +71,9 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 		if nerr != nil {
 			continue
 		}
+		//fmt.Println(kPath)
+		fmt.Println(resMap.Resources()[0])
+		// return
 		tPath, _ := strings.CutPrefix(match, pRelative)
 		tVert := gograph.NewVertex(tPath)
 		for _, p := range analysis.GetPaths() {
@@ -73,6 +90,19 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 		res, _ := jsonpath.JsonPathLookup(json_data, "$..configMapKeyRef")
 		if res != nil {
 			rList, _ := res.([]interface{})
+			for _, item := range rList {
+				rMap, _ := item.(map[string]interface{})
+				rName, _ := rMap["name"].(string)
+				eMapName := environment + "/" + rName
+				(*envMapList)[eMapName] = true
+				fVertex := gograph.NewVertex(eMapName)
+				envgraph.AddEdge(tVert, fVertex)
+			}
+		}
+
+		cmr, _ := jsonpath.JsonPathLookup(json_data, "$..configMapRef")
+		if cmr != nil {
+			rList, _ := cmr.([]interface{})
 			for _, item := range rList {
 				rMap, _ := item.(map[string]interface{})
 				rName, _ := rMap["name"].(string)
@@ -110,11 +140,13 @@ func main() {
 	envgraph := gograph.New[string](gograph.Directed())
 	// environment map name => environment definition yaml graph
 	envdefgraph := gograph.New[string](gograph.Directed())
-	// list or environment map names
+	// list for environment map names
 	envMaplist := make(map[string]bool)
-	statsForEnv("prod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	//envDirList := listEnvs(rootPath)
+	/*for _, edn := range envDirList {
+		statsForEnv(edn, rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	}*/
 	statsForEnv("preprod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
-	statsForEnv("pvt-2", rootPath, graph, envgraph, envdefgraph, &envMaplist)
 	// Link the maps
 	for k, _ := range envMaplist {
 		v1 := envgraph.GetVertexByID(k)

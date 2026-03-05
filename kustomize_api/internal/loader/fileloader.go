@@ -87,6 +87,8 @@ type FileLoader struct {
 	// paths relative to this directory.
 	root filesys.ConfirmedDir
 
+	relRoot string
+
 	// Restricts behavior of Load function.
 	loadRestrictor LoadRestrictorFunc
 
@@ -120,6 +122,10 @@ func (fl *FileLoader) Repo() string {
 // relative paths used in Load.
 func (fl *FileLoader) Root() string {
 	return fl.root.String()
+}
+
+func (fl *FileLoader) RelRoot() string {
+	return fl.relRoot
 }
 
 func NewLoaderOrDie(
@@ -178,8 +184,11 @@ func (fl *FileLoader) New(path string) (ifc.Loader, error) {
 	if err = fl.errIfArgEqualOrHigher(root); err != nil {
 		return nil, err
 	}
-	return newLoaderAtConfirmedDir(
-		fl.loadRestrictor, root, fl.fSys, fl, fl.cloner), nil
+	newLoader := newLoaderAtConfirmedDir(
+		fl.loadRestrictor, root, fl.fSys, fl, fl.cloner)
+
+	(*newLoader).relRoot = path
+	return newLoader, nil
 }
 
 // newLoaderAtGitClone returns a new Loader pinned to a temporary

@@ -4,8 +4,11 @@
 package resmap
 
 import (
+	"path/filepath"
+
 	"sigs.k8s.io/kustomize/api/ifc"
 	"sigs.k8s.io/kustomize/api/internal/kusterr"
+	"sigs.k8s.io/kustomize/api/internal/utils"
 	"sigs.k8s.io/kustomize/api/resource"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/errors"
@@ -53,11 +56,17 @@ func (rmF *Factory) FromResourceSlice(ress []*resource.Resource) ResMap {
 // FromFile returns a ResMap given a resource path.
 func (rmF *Factory) FromFile(
 	loader ifc.Loader, path string) (ResMap, error) {
+	sourcePath := filepath.Join(loader.RelRoot(), path)
 	content, err := loader.Load(path)
 	if err != nil {
 		return nil, err
 	}
 	m, err := rmF.NewResMapFromBytes(content)
+	if err != nil {
+		return nil, kusterr.Handler(err, path)
+	}
+	b, _ := yaml.Marshal([]string{sourcePath})
+	err = m.AnnotateAll(utils.SourcePathsAnnotation, string(b))
 	if err != nil {
 		return nil, kusterr.Handler(err, path)
 	}
