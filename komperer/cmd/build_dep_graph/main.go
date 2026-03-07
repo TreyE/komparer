@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,15 +66,16 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 	k := krusty.MakeKustomizer(opts)
 	for _, match := range matches {
 		kPath := filepath.Dir(match)
+		fPath, _ := filepath.Rel(pRelative, match)
 		tPath, _ := strings.CutPrefix(match, pRelative)
 		resMap, nerr := k.Run(fsys, kPath)
 		if nerr != nil {
 			continue
 		}
 
-		/*for _, r := range resMap.Resources() {
+		for _, r := range resMap.Resources() {
 			fmt.Println(r)
-		}*/
+		}
 
 		for _, rId := range resMap.AllIds() {
 			res, lookupErr := resMap.GetByCurrentId(rId)
@@ -81,7 +83,7 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 				panic(lookupErr)
 			}
 			resIdString := rId.String()
-			tVert := gograph.NewVertex(resIdString)
+			tVert := gograph.NewVertex(environment + ":" + fPath + ":" + resIdString)
 			annos := res.GetAnnotations()
 			if spVal, hasSPKey := annos[analysis.SourcePathsAnnotation]; hasSPKey {
 				sp, spErr := analysis.SourcePathFromString(&spVal)
