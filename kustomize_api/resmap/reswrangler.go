@@ -705,8 +705,8 @@ func (m *resWrangler) ApplySmPatch(selectedSet *resource.IdSet, patch *resource.
 	for _, res := range m.rList {
 		if selectedSet.Contains(res.CurId()) {
 			patchCopy := patch.DeepCopy()
-			patchCopy.MergeOriginalSourcePaths(res)
 			patchCopy.CopyMergeMetaDataFieldsFrom(patch)
+			patchCopy.MergeOriginalSourcePaths(res)
 			patchCopy.SetGvk(res.GetGvk())
 			patchCopy.SetKind(patch.GetKind())
 			if err := res.ApplySmPatch(patchCopy); err != nil {

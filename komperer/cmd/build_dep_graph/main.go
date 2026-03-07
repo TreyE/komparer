@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,67 +64,76 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 	opts := krusty.MakeDefaultOptions()
 	k := krusty.MakeKustomizer(opts)
 	for _, match := range matches {
-		analysis.ClearPaths()
 		kPath := filepath.Dir(match)
+		tPath, _ := strings.CutPrefix(match, pRelative)
 		resMap, nerr := k.Run(fsys, kPath)
 		if nerr != nil {
 			continue
 		}
-		//fmt.Println(kPath)
-		fmt.Println(resMap.Resources()[0])
-		// return
-		tPath, _ := strings.CutPrefix(match, pRelative)
-		tVert := gograph.NewVertex(tPath)
-		for _, p := range analysis.GetPaths() {
-			fPath, _ := strings.CutPrefix(p, pRelative)
-			fVert := gograph.NewVertex(fPath)
-			graph.AddEdge(tVert, fVert)
-		}
-		resMapYaml, _ := resMap.AsYaml()
-		resMapJson, _ := kyaml.YAMLToJSON(resMapYaml)
 
-		var json_data interface{}
-		json.Unmarshal(resMapJson, &json_data)
+		/*for _, r := range resMap.Resources() {
+			fmt.Println(r)
+		}*/
 
-		res, _ := jsonpath.JsonPathLookup(json_data, "$..configMapKeyRef")
-		if res != nil {
-			rList, _ := res.([]interface{})
-			for _, item := range rList {
-				rMap, _ := item.(map[string]interface{})
-				rName, _ := rMap["name"].(string)
-				eMapName := environment + "/" + rName
-				(*envMapList)[eMapName] = true
-				fVertex := gograph.NewVertex(eMapName)
-				envgraph.AddEdge(tVert, fVertex)
+		for _, rId := range resMap.AllIds() {
+			res, lookupErr := resMap.GetByCurrentId(rId)
+			if lookupErr != nil {
+				panic(lookupErr)
 			}
-		}
-
-		cmr, _ := jsonpath.JsonPathLookup(json_data, "$..configMapRef")
-		if cmr != nil {
-			rList, _ := cmr.([]interface{})
-			for _, item := range rList {
-				rMap, _ := item.(map[string]interface{})
-				rName, _ := rMap["name"].(string)
-				eMapName := environment + "/" + rName
-				(*envMapList)[eMapName] = true
-				fVertex := gograph.NewVertex(eMapName)
-				envgraph.AddEdge(tVert, fVertex)
-			}
-		}
-		for _, node := range resMap.Resources() {
-			kind := node.GetKind()
-			if kind == "ConfigMap" {
-				//f_r_nodes := getMapField(node.RNode, "name")
-				eMapName := environment + "/" + node.GetName()
-				(*envMapList)[eMapName] = true
-				fVert := gograph.NewVertex(eMapName)
-				envdefgraph.AddEdge(fVert, tVert)
-				for _, p := range analysis.GetPaths() {
-					pPath, _ := strings.CutPrefix(p, pRelative)
-					pVert := gograph.NewVertex(pPath)
-					envdefgraph.AddEdge(fVert, pVert)
+			resIdString := rId.String()
+			tVert := gograph.NewVertex(resIdString)
+			annos := res.GetAnnotations()
+			if spVal, hasSPKey := annos[analysis.SourcePathsAnnotation]; hasSPKey {
+				sp, spErr := analysis.SourcePathFromString(&spVal)
+				if spErr != nil {
+					panic(spErr)
 				}
+				resMapYaml, _ := res.AsYAML()
+				resMapJson, _ := kyaml.YAMLToJSON(resMapYaml)
+
+				var json_data interface{}
+				json.Unmarshal(resMapJson, &json_data)
+
+				jpres, _ := jsonpath.JsonPathLookup(json_data, "$..configMapKeyRef")
+				if jpres != nil {
+					rList, _ := jpres.([]interface{})
+					for _, item := range rList {
+						rMap, _ := item.(map[string]interface{})
+						rName, _ := rMap["name"].(string)
+						eMapName := environment + "/" + rName
+						(*envMapList)[eMapName] = true
+						fVertex := gograph.NewVertex(eMapName)
+						envgraph.AddEdge(tVert, fVertex)
+					}
+				}
+
+				cmr, _ := jsonpath.JsonPathLookup(json_data, "$..configMapRef")
+				if cmr != nil {
+					rList, _ := cmr.([]interface{})
+					for _, item := range rList {
+						rMap, _ := item.(map[string]interface{})
+						rName, _ := rMap["name"].(string)
+						eMapName := environment + "/" + rName
+						(*envMapList)[eMapName] = true
+						fVertex := gograph.NewVertex(eMapName)
+						envgraph.AddEdge(tVert, fVertex)
+					}
+				}
+
+				for _, sPath := range sp.Paths {
+					fp := filepath.Join(tPath, "..", sPath)
+					fVert := gograph.NewVertex(fp)
+					graph.AddEdge(tVert, fVert)
+					if "ConfigMap" == res.GetKind() {
+						eMapName := environment + "/" + res.GetName()
+						(*envMapList)[eMapName] = true
+						eVert := gograph.NewVertex(eMapName)
+						envdefgraph.AddEdge(eVert, fVert)
+					}
+				}
+
 			}
+
 		}
 	}
 }
@@ -142,11 +150,12 @@ func main() {
 	envdefgraph := gograph.New[string](gograph.Directed())
 	// list for environment map names
 	envMaplist := make(map[string]bool)
-	//envDirList := listEnvs(rootPath)
-	/*for _, edn := range envDirList {
+	envDirList := listEnvs(rootPath)
+	for _, edn := range envDirList {
 		statsForEnv(edn, rootPath, graph, envgraph, envdefgraph, &envMaplist)
-	}*/
-	statsForEnv("preprod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	}
+	//statsForEnv("pvt", rootPath, graph, envgraph, envdefgraph, &envMaplist)
+	// statsForEnv("pvt-2", rootPath, graph, envgraph, envdefgraph, &envMaplist)
 	// Link the maps
 	for k, _ := range envMaplist {
 		v1 := envgraph.GetVertexByID(k)

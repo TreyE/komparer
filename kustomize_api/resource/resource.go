@@ -6,9 +6,9 @@ package resource
 import (
 	"fmt"
 	"log"
-	"slices"
 	"strings"
 
+	"sigs.k8s.io/kustomize/api/analysis"
 	"sigs.k8s.io/kustomize/api/filters/patchstrategicmerge"
 	"sigs.k8s.io/kustomize/api/ifc"
 	"sigs.k8s.io/kustomize/api/internal/utils"
@@ -535,7 +535,7 @@ func (r *Resource) MergeOriginalSourcePaths(original *Resource) {
 	patchAnnotations := r.GetAnnotations()
 	if oVal, hasOrig := originalAnnotations[utils.SourcePathsAnnotation]; hasOrig {
 		if nVal, hasNew := patchAnnotations[utils.SourcePathsAnnotation]; hasNew {
-			patchAnnotations[utils.SourcePathsAnnotation] = mergeSourcePathLists(oVal, nVal)
+			patchAnnotations[utils.SourcePathsAnnotation] = analysis.MergeSourcePathLists(oVal, nVal)
 		} else {
 			patchAnnotations[utils.SourcePathsAnnotation] = oVal
 		}
@@ -547,40 +547,11 @@ func (r *Resource) MergeOriginalSourcePaths(original *Resource) {
 
 func (r *Resource) MergeRawSourcePathEntry(newOriginString string) string {
 	annos := r.GetAnnotations()
-	na, nerr := yaml.Marshal([]string{newOriginString})
-	if nerr != nil {
-		panic(nerr)
-	}
+	na := analysis.SourcePathFromRawString(newOriginString)
 	if oldEntry, hasOldEntry := annos[utils.SourcePathsAnnotation]; hasOldEntry {
-		return mergeSourcePathLists(oldEntry, string(na))
+		return analysis.MergeSourcePathLists(oldEntry, na.String())
 	}
-	return string(na)
-}
-
-func mergeSourcePathLists(oldOriginString string, newOriginString string) string {
-	var oldOriginArray, newOriginArray []string
-	err := yaml.Unmarshal([]byte(oldOriginString), &oldOriginArray)
-	if err != nil {
-		return newOriginString
-	}
-	err = yaml.Unmarshal([]byte(newOriginString), &newOriginArray)
-	if err != nil {
-		return newOriginString
-	}
-	originArray := slices.Concat(oldOriginArray, newOriginArray)
-	var resultArray []string
-	seen := make(map[string]bool)
-	for _, v := range originArray {
-		if _, found := seen[v]; !found {
-			seen[v] = true
-			resultArray = append(resultArray, v)
-		}
-	}
-	resultOriginString, yErr := yaml.Marshal(resultArray)
-	if yErr != nil {
-		return newOriginString
-	}
-	return string(resultOriginString)
+	return na.String()
 }
 
 func mergeStringMaps(maps ...map[string]string) map[string]string {
@@ -588,16 +559,6 @@ func mergeStringMaps(maps ...map[string]string) map[string]string {
 	for _, m := range maps {
 		for key, value := range m {
 			result[key] = value
-			if key == utils.SourcePathsAnnotation {
-				rVal, hasAnno := result[utils.SourcePathsAnnotation]
-				if hasAnno {
-					result[utils.SourcePathsAnnotation] = mergeSourcePathLists(rVal, value)
-				} else {
-					result[utils.SourcePathsAnnotation] = value
-				}
-			} else {
-				result[key] = value
-			}
 		}
 	}
 	return result

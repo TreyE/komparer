@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sigs.k8s.io/kustomize/api/analysis"
 	"sigs.k8s.io/kustomize/api/ifc"
 	"sigs.k8s.io/kustomize/api/internal/git"
 	"sigs.k8s.io/kustomize/kyaml/errors"
@@ -311,7 +310,6 @@ func (fl *FileLoader) Load(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	analysis.AddPath(path)
 	return fl.fSys.ReadFile(path)
 }
 
