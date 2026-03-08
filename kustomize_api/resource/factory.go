@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 
 	"sigs.k8s.io/kustomize/api/ifc"
@@ -105,7 +106,7 @@ func (rf *Factory) SliceFromPatches(
 			return nil, kusterr.Handler(err, string(path))
 		}
 		for _, oRes := range res {
-			spAnnotation, _ := yaml.Marshal([]string{string(path)})
+			spAnnotation, _ := yaml.Marshal([]string{filepath.Join(ldr.Root(), string(path))})
 			oldAnnotations := oRes.GetAnnotations()
 			oldAnnotations[utils.SourcePathsAnnotation] = string(spAnnotation)
 			oRes.SetAnnotations(oldAnnotations)

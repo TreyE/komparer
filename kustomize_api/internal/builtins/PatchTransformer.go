@@ -52,7 +52,7 @@ func (p *PatchTransformerPlugin) Config(h *resmap.PluginHelpers, c []byte) error
 		}
 		p.patchText = string(loaded)
 		p.patchSource = fmt.Sprintf("[path: %q]", p.Path)
-		p.SourcePath = filepath.Join(h.Loader().RelRoot(), p.Path)
+		p.SourcePath = filepath.Join(h.Loader().Root(), p.Path)
 	}
 
 	patchesSM, errSM := h.ResmapFactory().RF().SliceFromBytes([]byte(p.patchText))

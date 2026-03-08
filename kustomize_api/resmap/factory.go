@@ -56,7 +56,7 @@ func (rmF *Factory) FromResourceSlice(ress []*resource.Resource) ResMap {
 // FromFile returns a ResMap given a resource path.
 func (rmF *Factory) FromFile(
 	loader ifc.Loader, path string) (ResMap, error) {
-	sourcePath := filepath.Join(loader.RelRoot(), path)
+	sourcePath := filepath.Join(loader.Root(), path)
 	content, err := loader.Load(path)
 	if err != nil {
 		return nil, err
