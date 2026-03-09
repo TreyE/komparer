@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/hmdsefi/gograph"
@@ -16,15 +17,18 @@ type ImpactBuilder struct {
 	envGraph gograph.Graph[string]
 	// environment map name => environment definition yaml graph
 	envDefGraph gograph.Graph[string]
+	// List of failed builds
+	buildFailures map[string]error
 }
 
 func NewImpactBuilder(root string) *ImpactBuilder {
 	return &ImpactBuilder{
-		rootPath:    root,
-		envMapList:  make(map[string]bool),
-		impactGraph: gograph.New[string](gograph.Directed()),
-		envGraph:    gograph.New[string](gograph.Directed()),
-		envDefGraph: gograph.New[string](gograph.Directed()),
+		rootPath:      root,
+		envMapList:    make(map[string]bool),
+		impactGraph:   gograph.New[string](gograph.Directed()),
+		envGraph:      gograph.New[string](gograph.Directed()),
+		envDefGraph:   gograph.New[string](gograph.Directed()),
+		buildFailures: make(map[string]error),
 	}
 }
 
@@ -72,5 +76,18 @@ func (ib *ImpactBuilder) BuildGraph() ImpactGraph {
 	}
 	return ImpactGraph{
 		Data: ib.impactGraph,
+	}
+}
+
+func (ib *ImpactBuilder) BuildFailure(environment string, absKustomizePath string, err error) {
+	kPath, _ := strings.CutPrefix(absKustomizePath, ib.rootPath)
+	fKey := environment + ":" + kPath
+	ib.buildFailures[fKey] = err
+}
+
+func (ib *ImpactBuilder) ListFailures() {
+	for k, v := range ib.buildFailures {
+		fmt.Println(k)
+		fmt.Println(v)
 	}
 }
