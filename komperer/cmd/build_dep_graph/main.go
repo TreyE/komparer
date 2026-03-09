@@ -6,14 +6,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/hmdsefi/gograph"
-
 	"encoding/json"
 
 	"sigs.k8s.io/kustomize/api/analysis"
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
-	"sigs.k8s.io/kustomize/kyaml/yaml"
 	kyaml "sigs.k8s.io/yaml"
 
 	"github.com/oliveagle/jsonpath"
@@ -45,16 +42,7 @@ func glob(dir string, exts []string) ([]string, error) {
 	return files, err
 }
 
-func getMapField(node yaml.RNode, field string) *yaml.RNode {
-	var res *yaml.RNode
-	fMap := node.Field(field)
-	if fMap != nil {
-		res = fMap.Value
-	}
-	return res
-}
-
-func statsForEnv(environment string, pRelative string, graph gograph.Graph[string], envgraph gograph.Graph[string], envdefgraph gograph.Graph[string], envMapList *map[string]bool) {
+func statsForEnv(environment string, impactBuilder *internal.ImpactBuilder, pRelative string) {
 	exts := []string{"kustomization.yml", "kustomization.yaml"}
 	matches, err := glob(pRelative+"environments/"+environment+"/", exts)
 	if err != nil {
@@ -65,15 +53,10 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 	k := krusty.MakeKustomizer(opts)
 	for _, match := range matches {
 		kPath := filepath.Dir(match)
-		fPath, _ := filepath.Rel(pRelative, match)
 		resMap, nerr := k.Run(fsys, kPath)
 		if nerr != nil {
 			continue
 		}
-		/*
-			for _, r := range resMap.Resources() {
-				fmt.Println(r)
-			}*/
 
 		for _, rId := range resMap.AllIds() {
 			res, lookupErr := resMap.GetByCurrentId(rId)
@@ -81,7 +64,6 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 				panic(lookupErr)
 			}
 			resIdString := rId.String()
-			tVert := gograph.NewVertex(environment + ":" + fPath + ":" + resIdString)
 			annos := res.GetAnnotations()
 			if spVal, hasSPKey := annos[analysis.SourcePathsAnnotation]; hasSPKey {
 				sp, spErr := analysis.SourcePathFromString(&spVal)
@@ -90,14 +72,9 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 				}
 
 				for _, sPath := range sp.Paths {
-					fp, _ := strings.CutPrefix(sPath, pRelative)
-					fVert := gograph.NewVertex(fp)
-					graph.AddEdge(tVert, fVert)
+					impactBuilder.ResourceDependsOnFile(environment, match, resIdString, sPath)
 					if "ConfigMap" == res.GetKind() {
-						eMapName := environment + "/" + res.GetName()
-						(*envMapList)[eMapName] = true
-						eVert := gograph.NewVertex(eMapName)
-						envdefgraph.AddEdge(eVert, fVert)
+						impactBuilder.ConfigMapDependsOnFile(environment, res.GetName(), sPath)
 					}
 				}
 
@@ -114,10 +91,7 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 				for _, item := range rList {
 					rMap, _ := item.(map[string]interface{})
 					rName, _ := rMap["name"].(string)
-					eMapName := environment + "/" + rName
-					(*envMapList)[eMapName] = true
-					fVertex := gograph.NewVertex(eMapName)
-					envgraph.AddEdge(tVert, fVertex)
+					impactBuilder.ResourceDependsOnEnv(environment, match, resIdString, rName)
 				}
 			}
 
@@ -127,10 +101,7 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 				for _, item := range rList {
 					rMap, _ := item.(map[string]interface{})
 					rName, _ := rMap["name"].(string)
-					eMapName := environment + "/" + rName
-					(*envMapList)[eMapName] = true
-					fVertex := gograph.NewVertex(eMapName)
-					envgraph.AddEdge(tVert, fVertex)
+					impactBuilder.ResourceDependsOnEnv(environment, match, resIdString, rName)
 				}
 			}
 		}
@@ -140,40 +111,12 @@ func statsForEnv(environment string, pRelative string, graph gograph.Graph[strin
 func main() {
 	rootPath := os.Args[1]
 	storePath := os.Args[2]
-	// kustomize.yaml => other yamls graph
-	// also our final dependency graph
-	graph := gograph.New[string](gograph.Directed())
-	// kustomize.yaml => environment map name graph
-	envgraph := gograph.New[string](gograph.Directed())
-	// environment map name => environment definition yaml graph
-	envdefgraph := gograph.New[string](gograph.Directed())
-	// list for environment map names
-	envMaplist := make(map[string]bool)
+	impactBuilder := internal.NewImpactBuilder(rootPath)
 	envDirList := listEnvs(rootPath)
 	for _, edn := range envDirList {
-		statsForEnv(edn, rootPath, graph, envgraph, envdefgraph, &envMaplist)
+		statsForEnv(edn, impactBuilder, rootPath)
 	}
-	// statsForEnv("preprod", rootPath, graph, envgraph, envdefgraph, &envMaplist)
-	// statsForEnv("pvt-2", rootPath, graph, envgraph, envdefgraph, &envMaplist)
-	// Link the maps
-	for k, _ := range envMaplist {
-		v1 := envgraph.GetVertexByID(k)
-		v2 := envdefgraph.GetVertexByID(k)
-		for _, v := range envgraph.EdgesOf(v1) {
-			if v.Destination().Label() == k {
-				for _, vl := range envdefgraph.EdgesOf(v2) {
-					if vl.Source().Label() == k {
-						vs := gograph.NewVertex(v.Source().Label())
-						vd := gograph.NewVertex(vl.Destination().Label())
-						graph.AddEdge(vs, vd)
-					}
-				}
-			}
-		}
-	}
-	vData := internal.ImpactGraph{
-		Data: graph,
-	}
+	vData := impactBuilder.BuildGraph()
 	b, _ := vData.GobEncode()
 	os.WriteFile(storePath, b, 0644)
 }
