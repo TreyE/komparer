@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+project_name: komparer
+version: 2
+builds:
+  - id: build_dep_graph
+    main: ./cmd/build_dep_graph
+    binary: build_dep_graph
+    dir: komparer
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: evaluate_impact_graph
+    main: ./cmd/evaluate_impact_graph
+    binary: evaluate_impact_graph
+    dir: komparer
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
