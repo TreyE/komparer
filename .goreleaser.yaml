@@ -24,3 +24,5 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 source:
   enabled: false
+checksum:
+  disable: true
