@@ -2,6 +2,7 @@
 
 ROOT_DIR=/Users/tevans/proj/cme_k8s/
 OLD_SHA=8946a9e9a57be870dd8bd77bf03c46f8a79c2224
+NEW_SHA=trunk
 ORIGINAL_DIR=`pwd`
 
 cd $ROOT_DIR
@@ -10,7 +11,7 @@ cd $ORIGINAL_DIR
 go run cmd/build_dep_graph/main.go $ROOT_DIR ./old_data
 
 cd $ROOT_DIR
-git checkout trunk
+git checkout $NEW_SHA
 git diff --no-renames --name-status $OLD_SHA > $ORIGINAL_DIR/example_diffs.tsv
 
 cd $ORIGINAL_DIR
