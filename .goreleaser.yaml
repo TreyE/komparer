@@ -22,3 +22,5 @@ builds:
       - amd64
       - arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
+source:
+  enabled: false
