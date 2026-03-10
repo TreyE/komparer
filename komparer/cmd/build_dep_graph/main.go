@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 	kyaml "sigs.k8s.io/yaml"
 
+	"github.com/alexflint/go-arg"
 	"github.com/oliveagle/jsonpath"
 
 	"github.com/ideacrew/komparer/internal"
@@ -110,8 +112,24 @@ func statsForEnv(environment string, impactBuilder *internal.ImpactBuilder, pRel
 }
 
 func main() {
-	rootPath := os.Args[1]
-	storePath := os.Args[2]
+	var args struct {
+		RootPath  string `arg:"positional,required" help:"Path to the directory containing the Kustomization repository"`
+		StorePath string `arg:"positional,required" help:"Path to store the generated dependency graph"`
+	}
+	p, _ := arg.NewParser(arg.Config{}, &args)
+	err := p.Parse(os.Args[1:])
+	switch {
+	case err == arg.ErrHelp: // indicates that user wrote "--help" on command line
+		p.WriteHelp(os.Stdout)
+		os.Exit(0)
+	case err != nil:
+		fmt.Printf("error: %v\n", err)
+		p.WriteHelp(os.Stdout)
+		os.Exit(1)
+	}
+
+	rootPath := args.RootPath
+	storePath := args.StorePath
 	impactBuilder := internal.NewImpactBuilder(rootPath)
 	envDirList := listEnvs(rootPath)
 	for _, edn := range envDirList {

@@ -17,4 +17,4 @@ git diff --no-renames --name-status $OLD_SHA > $ORIGINAL_DIR/example_diffs.tsv
 cd $ORIGINAL_DIR
 go run cmd/build_dep_graph/main.go $ROOT_DIR ./current_data
 
-go run cmd/evaluate_impact_graph/main.go current_data old_data example_diffs.tsv
+go run cmd/evaluate_impact_graph/main.go old_data current_data example_diffs.tsv
