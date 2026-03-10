@@ -8,7 +8,8 @@ import (
 )
 
 type ImpactGraph struct {
-	Data gograph.Graph[string]
+	Data     gograph.Graph[string]
+	Failures map[string]string
 }
 
 func (ig *ImpactGraph) GobEncode() ([]byte, error) {
@@ -19,20 +20,24 @@ func (ig *ImpactGraph) GobEncode() ([]byte, error) {
 	}
 	enc := gob.NewEncoder(&b)
 	enc.Encode(&list)
+	enc.Encode(ig.Failures)
 	return b.Bytes(), nil
 }
 
 func (ig *ImpactGraph) GobDecode(b []byte) error {
+	failures := make(map[string]string)
 	newData := gograph.New[string](gograph.Directed())
 	dec := gob.NewDecoder(bytes.NewReader(b))
 	var edges [][]string
 	dec.Decode(&edges)
+	dec.Decode(&failures)
 	for _, edge := range edges {
 		srcV := gograph.NewVertex[string](edge[0])
 		destV := gograph.NewVertex[string](edge[1])
 		newData.AddEdge(srcV, destV)
 	}
 	ig.Data = newData
+	ig.Failures = failures
 	return nil
 }
 

@@ -117,7 +117,6 @@ func main() {
 	for _, edn := range envDirList {
 		statsForEnv(edn, impactBuilder, rootPath)
 	}
-	impactBuilder.ListFailures()
 	vData := impactBuilder.BuildGraph()
 	b, _ := vData.GobEncode()
 	os.WriteFile(storePath, b, 0644)

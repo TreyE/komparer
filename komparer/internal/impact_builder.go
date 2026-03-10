@@ -74,8 +74,13 @@ func (ib *ImpactBuilder) BuildGraph() ImpactGraph {
 			}
 		}
 	}
+	failures := make(map[string]string)
+	for k, v := range ib.buildFailures {
+		failures[k] = fmt.Sprint(v)
+	}
 	return ImpactGraph{
-		Data: ib.impactGraph,
+		Data:     ib.impactGraph,
+		Failures: failures,
 	}
 }
 
