@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
       -
         name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
       -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
@@ -29,5 +29,6 @@ jobs:
           # 'latest', 'nightly', or a semver
           version: '~> v2'
           args: release --clean
+          workdir: komparer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
