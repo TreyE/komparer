@@ -132,9 +132,11 @@ func main() {
 
 	if args.Markdown {
 		md := markdown.NewMarkdown(os.Stdout)
-		//changeCount := len(allChanges.Resources)
 
 		md.H2("Summary").LF()
+
+		md.PlainTextf("**Impacted Resources: %d**", len(allChanges.Resources)).LF()
+		md.PlainTextf("**Failed Builds: %d**", len(cg.Failures)).LF()
 
 		md.PlainText("**Impacted Environments:**").LF()
 		formattedEnvList := make([]string, len(allChanges.Environments))
@@ -143,8 +145,6 @@ func main() {
 		}
 
 		md.OrderedList(formattedEnvList...).LF()
-
-		md.PlainTextf("**Failed Builds: %d**", len(cg.Failures)).LF()
 
 		var rows [][]string
 
@@ -173,13 +173,15 @@ func main() {
 		md.Build()
 		fmt.Println("")
 	} else {
-		fmt.Fprintf(os.Stdout, "Changed Resources: %d\n\n", len(allChanges.Resources))
-		fmt.Fprint(os.Stdout, "Impacted Environments\n")
-		for _, f := range allChanges.Environments {
-			fmt.Println(f)
-		}
+		fmt.Fprintf(os.Stdout, "Changed Resources: %d", len(allChanges.Resources))
 		if len(cg.Failures) > 0 {
-			fmt.Fprintf(os.Stderr, "\nBuild Failures: %d\n", len(cg.Failures))
+			fmt.Fprintf(os.Stderr, "Build Failures: %d\n", len(cg.Failures))
+		}
+		if len(allChanges.Environments) > 0 {
+			fmt.Fprint(os.Stdout, "Impacted Environments\n")
+			for _, f := range allChanges.Environments {
+				fmt.Println(f)
+			}
 		}
 	}
 }
