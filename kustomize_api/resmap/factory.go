@@ -152,3 +152,6 @@ func (rmF *Factory) NewResMapFromRNodeSlice(s []*yaml.RNode) (ResMap, error) {
 	}
 	return newResMapFromResourceSlice(rs)
 }
+
+func (rmF *Factory) ApplyTopLevelSourcePath(kustFilePath string) {
+}

@@ -9,6 +9,7 @@ import (
 	"reflect"
 
 	"sigs.k8s.io/kustomize/api/filters/annotations"
+	"sigs.k8s.io/kustomize/api/internal/utils"
 	"sigs.k8s.io/kustomize/api/resource"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/errors"
@@ -765,4 +766,14 @@ func (m *resWrangler) ApplyFilter(f kio.Filter) error {
 	}
 	m.rList = nRList
 	return nil
+}
+
+func (m *resWrangler) ApplyTopLevelSourcePath(kustFilePath string) {
+	res := m.Resources()
+	for _, r := range res {
+		nSP := r.MergeRawSourcePathEntry(kustFilePath)
+		oldAnnos := r.GetAnnotations()
+		oldAnnos[utils.SourcePathsAnnotation] = nSP
+		r.SetAnnotations(oldAnnos)
+	}
 }

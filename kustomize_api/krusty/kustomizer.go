@@ -123,6 +123,7 @@ func (b *Kustomizer) Run(
 			return nil, errors.WrapPrefixf(err, "failed to clean up transformer annotations")
 		}
 	}
+	kt.ApplySourcePaths(path, m)
 	return m, nil
 }
 

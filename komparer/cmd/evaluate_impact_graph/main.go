@@ -173,7 +173,7 @@ func main() {
 		md.Build()
 		fmt.Println("")
 	} else {
-		fmt.Fprintf(os.Stdout, "Changed Resources: %d", len(allChanges.Resources))
+		fmt.Fprintf(os.Stdout, "Changed Resources: %d\n", len(allChanges.Resources))
 		if len(cg.Failures) > 0 {
 			fmt.Fprintf(os.Stderr, "Build Failures: %d\n", len(cg.Failures))
 		}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"sigs.k8s.io/kustomize/api/ifc"
@@ -584,4 +585,8 @@ func (kt *KustTarget) configureBuiltinPlugin(
 			err, "trouble configuring builtin %s with config: `\n%s`", bpt, string(y))
 	}
 	return nil
+}
+
+func (kt *KustTarget) ApplySourcePaths(path string, m resmap.ResMap) {
+	m.ApplyTopLevelSourcePath(filepath.Join(path, kt.kustFileName))
 }
