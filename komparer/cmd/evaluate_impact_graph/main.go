@@ -1,13 +1,10 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
-	"maps"
 	"os"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/alexflint/go-arg"
 	mapset "github.com/deckarep/golang-set/v2"
@@ -16,96 +13,12 @@ import (
 	"github.com/nao1215/markdown"
 )
 
-const (
-	Added = iota
-	Removed
-	Modified
-)
-
-var changeKindMapping = map[string]int{
-	"A": Added,
-	"D": Removed,
-	"M": Modified,
-}
-
-type FileChange struct {
-	Kind int
-	Path string
-}
-
-type ChangeResults struct {
-	// AddedResources   []internal.ImpactedResource
-	// RemovedResources []internal.ImpactedResource
-	Resources    []internal.ImpactedResource
-	Environments []string
-}
-
 type ChangedResources struct {
-	AddedResources   []string
-	RemovedResources []string
-	ChangedResources []string
-}
-
-func extractDiffChanges(diffDataPath string) []FileChange {
-	var fcs []FileChange
-
-	ddf, _ := os.Open(diffDataPath)
-
-	csvReader := csv.NewReader(ddf)
-
-	// 3. Set the delimiter to a tab character
-	csvReader.Comma = '\t'
-
-	records, _ := csvReader.ReadAll()
-
-	for _, r := range records {
-		fcs = append(
-			fcs,
-			FileChange{
-				Kind: changeKindMapping[r[0]],
-				Path: r[1],
-			},
-		)
-	}
-	return fcs
-}
-
-func makeChangeResults(impactedFiles []string) ChangeResults {
-	impactedEnvMap := make(map[string]bool)
-	var impactedResources []internal.ImpactedResource
-	sort.Strings(impactedFiles)
-	for _, impactedFile := range impactedFiles {
-		impactedEnvMap[strings.Split(impactedFile, ":")[0]] = true
-		impactedResources = append(impactedResources, internal.ImpactedResourceFromString(impactedFile))
-	}
-	impactedEnvs := slices.Collect(maps.Keys(impactedEnvMap))
-	sort.Strings(impactedEnvs)
-	return ChangeResults{
-		Resources:    impactedResources,
-		Environments: impactedEnvs,
-	}
-}
-
-func getDependentList(currentGraph internal.ImpactGraph, oldGraph internal.ImpactGraph, diffedFiles []FileChange) ChangeResults {
-	allChanges := make(map[string]bool)
-	for _, df := range diffedFiles {
-		if df.Kind != Removed {
-			deps := currentGraph.FindDependentsOf(df.Path)
-			for _, d := range deps {
-				allChanges[d] = true
-			}
-		}
-	}
-	for _, df := range diffedFiles {
-		if df.Kind == Removed {
-			deps := oldGraph.FindDependentsOf(df.Path)
-			for _, d := range deps {
-				allChanges[d] = true
-			}
-		}
-	}
-	stringies := slices.Collect(maps.Keys(allChanges))
-	return makeChangeResults(stringies)
+	AddedResources    []string
+	RemovedResources  []string
+	ChangedResources  []string
+	ImpactedResources []internal.ImpactedResource
+	Environments      []string
 }
 
 func compareContentChanges(og, cg internal.ImpactGraph) ChangedResources {
@@ -136,7 +49,7 @@ func compareContentChanges(og, cg internal.ImpactGraph) ChangedResources {
 			}
 		}
 	}
-	fmt.Println(len(changedByEnv.ToSlice()))
+
 	for _, k := range removed_keys.ToSlice() {
 		searchVert := gograph.NewVertex(k)
 		for _, edge := range og.EnvDependencyMap.EdgesOf(searchVert) {
@@ -148,10 +61,59 @@ func compareContentChanges(og, cg internal.ImpactGraph) ChangedResources {
 		}
 	}
 
+	finalChangeList := changedByContent.Union(changedByEnv)
+
+	for _, nk := range new_keys.ToSlice() {
+		finalChangeList.Remove(nk)
+	}
+
+	for _, rk := range removed_keys.ToSlice() {
+		finalChangeList.Remove(rk)
+	}
+
+	var impactedRes []internal.ImpactedResource
+	envSet := mapset.NewSet[string]()
+
+	for _, nk := range new_keys.ToSlice() {
+		ir := internal.ImpactedResourceFromString(internal.Added, nk)
+		envSet.Add(ir.Environment)
+		impactedRes = append(impactedRes, ir)
+	}
+
+	for _, rk := range removed_keys.ToSlice() {
+		ir := internal.ImpactedResourceFromString(internal.Removed, rk)
+		envSet.Add(ir.Environment)
+		impactedRes = append(impactedRes, ir)
+	}
+
+	for _, ck := range finalChangeList.ToSlice() {
+		ir := internal.ImpactedResourceFromString(internal.Modified, ck)
+		envSet.Add(ir.Environment)
+		impactedRes = append(impactedRes, ir)
+	}
+
+	envList := envSet.ToSlice()
+	sort.Strings(envList)
+
+	slices.SortStableFunc(impactedRes, internal.SortImpactedResources)
+
 	return ChangedResources{
-		AddedResources:   new_keys.ToSlice(),
-		RemovedResources: removed_keys.ToSlice(),
-		ChangedResources: changedByContent.Union(changedByEnv).ToSlice(),
+		AddedResources:    new_keys.ToSlice(),
+		RemovedResources:  removed_keys.ToSlice(),
+		ChangedResources:  finalChangeList.ToSlice(),
+		ImpactedResources: impactedRes,
+		Environments:      envList,
+	}
+}
+
+func changeIconFor(ir internal.ImpactedResource) string {
+	switch ir.ChangeKind {
+	case internal.Added:
+		return ":heavy_plus_sign: "
+	case internal.Removed:
+		return ":x: "
+	default:
+		return ""
 	}
 }
 
@@ -159,7 +121,6 @@ func main() {
 	var args struct {
 		OldGraphDataPath     string `arg:"positional,required" help:"Path to impact graph for the earlier commit"`
 		CurrentGraphDataPath string `arg:"positional,required" help:"Path to impact graph for the current commit"`
-		DiffDataPath         string `arg:"positional,required" help:"Path to the diff file between the two commits"`
 		Markdown             bool   `arg:"-m" help:"Emit results in markdown format"`
 	}
 	p, _ := arg.NewParser(arg.Config{}, &args)
@@ -176,16 +137,12 @@ func main() {
 
 	currentGraphDataPath := args.CurrentGraphDataPath
 	oldGraphDataPath := args.OldGraphDataPath
-	diffDatapath := args.DiffDataPath
 
-	diffedFiles := extractDiffChanges(diffDatapath)
 	var cg, og internal.ImpactGraph
 	bc, _ := os.ReadFile(currentGraphDataPath)
 	bo, _ := os.ReadFile(oldGraphDataPath)
 	cg.GobDecode(bc)
 	og.GobDecode(bo)
-
-	allChanges := getDependentList(cg, og, diffedFiles)
 
 	changesByContent := compareContentChanges(og, cg)
 
@@ -194,12 +151,12 @@ func main() {
 
 		md.H2("Summary").LF()
 
-		md.PlainTextf("**Impacted Resources: %d**", len(allChanges.Resources)).LF()
+		md.PlainTextf("**Impacted Resources: %d**", len(changesByContent.ImpactedResources)).LF()
 		md.PlainTextf("**Failed Builds: %d**", len(cg.Failures)).LF()
 
 		md.PlainText("**Impacted Environments:**").LF()
-		formattedEnvList := make([]string, len(allChanges.Environments))
-		for i, e := range allChanges.Environments {
+		formattedEnvList := make([]string, len(changesByContent.Environments))
+		for i, e := range changesByContent.Environments {
 			formattedEnvList[i] = "**" + e + "**"
 		}
 
@@ -207,8 +164,8 @@ func main() {
 
 		var rows [][]string
 
-		for _, c := range allChanges.Resources {
-			rows = append(rows, []string{c.Environment, c.Path, c.ResourceID})
+		for _, c := range changesByContent.ImpactedResources {
+			rows = append(rows, []string{c.Environment, c.Path, changeIconFor(c) + c.ResourceID})
 		}
 		md.H3("Impacted Resources").LF()
 
@@ -235,13 +192,12 @@ func main() {
 		fmt.Fprintf(os.Stdout, "Added Resources: %d\n", len(changesByContent.AddedResources))
 		fmt.Fprintf(os.Stdout, "Removed Resources: %d\n", len(changesByContent.RemovedResources))
 		fmt.Fprintf(os.Stdout, "Changed Resources: %d\n", len(changesByContent.ChangedResources))
-		fmt.Fprintf(os.Stdout, "Impacted Resources: %d\n", len(allChanges.Resources))
 		if len(cg.Failures) > 0 {
 			fmt.Fprintf(os.Stderr, "Build Failures: %d\n", len(cg.Failures))
 		}
-		if len(allChanges.Environments) > 0 {
+		if len(changesByContent.Environments) > 0 {
 			fmt.Fprint(os.Stdout, "Impacted Environments\n")
-			for _, f := range allChanges.Environments {
+			for _, f := range changesByContent.Environments {
 				fmt.Println(f)
 			}
 		}

@@ -1,8 +1,8 @@
 #!/bin/sh
 
-ROOT_DIR=/Users/tevans/proj/cme_k8s/
-OLD_SHA=8946a9e9a57be870dd8bd77bf03c46f8a79c2224
-NEW_SHA=trunk
+ROOT_DIR=/Users/tevans/proj/mhc_k8s/
+OLD_SHA=main
+NEW_SHA=playground
 ORIGINAL_DIR=`pwd`
 
 cd $ROOT_DIR
@@ -12,9 +12,7 @@ go run cmd/build_dep_graph/main.go $ROOT_DIR ./old_data
 
 cd $ROOT_DIR
 git checkout $NEW_SHA
-git diff --no-renames --name-status $OLD_SHA > $ORIGINAL_DIR/example_diffs.tsv
-
 cd $ORIGINAL_DIR
 go run cmd/build_dep_graph/main.go $ROOT_DIR ./current_data
 
-go run cmd/evaluate_impact_graph/main.go old_data current_data example_diffs.tsv
+go run cmd/evaluate_impact_graph/main.go old_data current_data
