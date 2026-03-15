@@ -5,10 +5,13 @@ import (
 	"strings"
 
 	"github.com/hmdsefi/gograph"
+	"sigs.k8s.io/kustomize/api/resource"
 )
 
 type ImpactBuilder struct {
 	rootPath string
+	resMap   map[string]*resource.Resource
+	envMap   map[string]string
 	// uniqueness list for environment map names
 	envMapList map[string]bool
 	// resource ID => yaml file graph
@@ -24,6 +27,8 @@ type ImpactBuilder struct {
 func NewImpactBuilder(root string) *ImpactBuilder {
 	return &ImpactBuilder{
 		rootPath:      root,
+		resMap:        make(map[string]*resource.Resource),
+		envMap:        make(map[string]string),
 		envMapList:    make(map[string]bool),
 		impactGraph:   gograph.New[string](gograph.Directed()),
 		envGraph:      gograph.New[string](gograph.Directed()),
@@ -39,6 +44,12 @@ func (ib *ImpactBuilder) ConfigMapDependsOnFile(environment string, envName stri
 	fVert := gograph.NewVertex(fp)
 	ib.envMapList[eMapName] = true
 	ib.envDefGraph.AddEdge(eVert, fVert)
+}
+
+func (ib *ImpactBuilder) BuiltResource(environment string, resAbsPath string, resId string, res *resource.Resource) {
+	resPath, _ := strings.CutPrefix(resAbsPath, ib.rootPath)
+	tVert := environment + ":" + resPath + ":" + resId
+	ib.resMap[tVert] = res
 }
 
 func (ib *ImpactBuilder) ResourceDependsOnFile(environment string, resAbsPath string, resId string, sAbsPath string) {
@@ -58,7 +69,22 @@ func (ib *ImpactBuilder) ResourceDependsOnEnv(environment string, resAbsPath str
 	ib.envGraph.AddEdge(tVert, eVert)
 }
 
+func (ib *ImpactBuilder) HasEnvMap(environment string, envMapName string, envFilePath string, envResourceId string) {
+	eMapName := environment + "/" + envMapName
+	resPath, _ := strings.CutPrefix(envFilePath, ib.rootPath)
+	envResId := environment + ":" + resPath + ":" + envResourceId
+	ib.envMap[eMapName] = envResId
+}
+
 func (ib *ImpactBuilder) BuildGraph() ImpactGraph {
+	edMap := gograph.New[string](gograph.Directed())
+	for _, edge := range ib.envGraph.AllEdges() {
+		if envResId, hasEnvId := ib.envMap[edge.Destination().Label()]; hasEnvId {
+			vs := gograph.NewVertex(edge.Source().Label())
+			vd := gograph.NewVertex(envResId)
+			edMap.AddEdge(vs, vd)
+		}
+	}
 	for k, _ := range ib.envMapList {
 		v1 := ib.envGraph.GetVertexByID(k)
 		v2 := ib.envDefGraph.GetVertexByID(k)
@@ -74,13 +100,16 @@ func (ib *ImpactBuilder) BuildGraph() ImpactGraph {
 			}
 		}
 	}
+
 	failures := make(map[string]string)
 	for k, v := range ib.buildFailures {
 		failures[k] = fmt.Sprint(v)
 	}
 	return ImpactGraph{
-		Data:     ib.impactGraph,
-		Failures: failures,
+		Data:             ib.impactGraph,
+		ResourceMap:      ib.resMap,
+		EnvDependencyMap: edMap,
+		Failures:         failures,
 	}
 }
 

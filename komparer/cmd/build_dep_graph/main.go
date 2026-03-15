@@ -68,6 +68,12 @@ func statsForEnv(environment string, impactBuilder *internal.ImpactBuilder, pRel
 			}
 			resIdString := rId.String()
 			annos := res.GetAnnotations()
+			impactBuilder.BuiltResource(environment, match, resIdString, res)
+
+			if "ConfigMap" == res.GetKind() {
+				impactBuilder.HasEnvMap(environment, res.GetName(), match, resIdString)
+			}
+
 			if spVal, hasSPKey := annos[analysis.SourcePathsAnnotation]; hasSPKey {
 				sp, spErr := analysis.SourcePathFromString(&spVal)
 				if spErr != nil {

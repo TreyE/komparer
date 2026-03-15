@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/alexflint/go-arg"
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/hmdsefi/gograph"
 	"github.com/ideacrew/komparer/internal"
 	"github.com/nao1215/markdown"
 )
@@ -32,8 +34,16 @@ type FileChange struct {
 }
 
 type ChangeResults struct {
+	// AddedResources   []internal.ImpactedResource
+	// RemovedResources []internal.ImpactedResource
 	Resources    []internal.ImpactedResource
 	Environments []string
+}
+
+type ChangedResources struct {
+	AddedResources   []string
+	RemovedResources []string
+	ChangedResources []string
 }
 
 func extractDiffChanges(diffDataPath string) []FileChange {
@@ -98,6 +108,53 @@ func getDependentList(currentGraph internal.ImpactGraph, oldGraph internal.Impac
 	return makeChangeResults(stringies)
 }
 
+func compareContentChanges(og, cg internal.ImpactGraph) ChangedResources {
+	okset := mapset.NewSetFromMapKeys(og.ResourceMap)
+	nkset := mapset.NewSetFromMapKeys(cg.ResourceMap)
+	new_keys := nkset.Difference(okset)
+	removed_keys := okset.Difference(nkset)
+	common_keys := okset.Intersect(nkset)
+
+	changedByContent := mapset.NewSet[string]()
+
+	for _, k := range common_keys.ToSlice() {
+		oldResource := og.ResourceMap[k]
+		newResource := cg.ResourceMap[k]
+		ory, _ := oldResource.AsYAML()
+		nry, _ := newResource.AsYAML()
+		if string(ory) != string(nry) {
+			changedByContent.Add(k)
+		}
+	}
+
+	changedByEnv := mapset.NewSet[string]()
+	for _, k := range changedByContent.ToSlice() {
+		searchVert := gograph.NewVertex(k)
+		for _, edge := range cg.EnvDependencyMap.EdgesOf(searchVert) {
+			if edge.Source() != searchVert {
+				changedByEnv.Add(edge.Source().Label())
+			}
+		}
+	}
+	fmt.Println(len(changedByEnv.ToSlice()))
+	for _, k := range removed_keys.ToSlice() {
+		searchVert := gograph.NewVertex(k)
+		for _, edge := range og.EnvDependencyMap.EdgesOf(searchVert) {
+			if edge.Source() != searchVert {
+				if common_keys.Contains(edge.Source().Label()) {
+					changedByEnv.Add(edge.Source().Label())
+				}
+			}
+		}
+	}
+
+	return ChangedResources{
+		AddedResources:   new_keys.ToSlice(),
+		RemovedResources: removed_keys.ToSlice(),
+		ChangedResources: changedByContent.Union(changedByEnv).ToSlice(),
+	}
+}
+
 func main() {
 	var args struct {
 		OldGraphDataPath     string `arg:"positional,required" help:"Path to impact graph for the earlier commit"`
@@ -129,6 +186,8 @@ func main() {
 	og.GobDecode(bo)
 
 	allChanges := getDependentList(cg, og, diffedFiles)
+
+	changesByContent := compareContentChanges(og, cg)
 
 	if args.Markdown {
 		md := markdown.NewMarkdown(os.Stdout)
@@ -173,7 +232,10 @@ func main() {
 		md.Build()
 		fmt.Println("")
 	} else {
-		fmt.Fprintf(os.Stdout, "Changed Resources: %d\n", len(allChanges.Resources))
+		fmt.Fprintf(os.Stdout, "Added Resources: %d\n", len(changesByContent.AddedResources))
+		fmt.Fprintf(os.Stdout, "Removed Resources: %d\n", len(changesByContent.RemovedResources))
+		fmt.Fprintf(os.Stdout, "Changed Resources: %d\n", len(changesByContent.ChangedResources))
+		fmt.Fprintf(os.Stdout, "Impacted Resources: %d\n", len(allChanges.Resources))
 		if len(cg.Failures) > 0 {
 			fmt.Fprintf(os.Stderr, "Build Failures: %d\n", len(cg.Failures))
 		}
