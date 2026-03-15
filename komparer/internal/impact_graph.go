@@ -10,7 +10,6 @@ import (
 )
 
 type ImpactGraph struct {
-	Data        gograph.Graph[string]
 	ResourceMap map[string]*resource.Resource
 	// Resource ID => Environment Map Resource ID
 	EnvDependencyMap gograph.Graph[string]
@@ -19,11 +18,7 @@ type ImpactGraph struct {
 
 func (ig *ImpactGraph) GobEncode() ([]byte, error) {
 	var b bytes.Buffer
-	var list [][]string
 	var edList [][]string
-	for _, edge := range ig.Data.AllEdges() {
-		list = append(list, []string{edge.Source().Label(), edge.Destination().Label()})
-	}
 	for _, edEdge := range ig.EnvDependencyMap.AllEdges() {
 		edList = append(edList, []string{edEdge.Source().Label(), edEdge.Destination().Label()})
 	}
@@ -31,7 +26,6 @@ func (ig *ImpactGraph) GobEncode() ([]byte, error) {
 	encodableResources := ig.serializableResourceMap()
 	enc.Encode(encodableResources)
 	enc.Encode(&edList)
-	enc.Encode(&list)
 	enc.Encode(ig.Failures)
 	return b.Bytes(), nil
 }
@@ -39,20 +33,12 @@ func (ig *ImpactGraph) GobEncode() ([]byte, error) {
 func (ig *ImpactGraph) GobDecode(b []byte) error {
 	failures := make(map[string]string)
 	resMap := make(map[string]string)
-	newData := gograph.New[string](gograph.Directed())
 	newEnvDepMap := gograph.New[string](gograph.Directed())
 	dec := gob.NewDecoder(bytes.NewReader(b))
-	var edges [][]string
 	var edEdges [][]string
 	dec.Decode(&resMap)
 	dec.Decode(&edEdges)
-	dec.Decode(&edges)
 	dec.Decode(&failures)
-	for _, edge := range edges {
-		srcV := gograph.NewVertex[string](edge[0])
-		destV := gograph.NewVertex[string](edge[1])
-		newData.AddEdge(srcV, destV)
-	}
 	for _, edge := range edEdges {
 		srcV := gograph.NewVertex[string](edge[0])
 		destV := gograph.NewVertex[string](edge[1])
@@ -60,24 +46,8 @@ func (ig *ImpactGraph) GobDecode(b []byte) error {
 	}
 	ig.EnvDependencyMap = newEnvDepMap
 	ig.ResourceMap = ig.unserializeResourceMap(resMap)
-	ig.Data = newData
 	ig.Failures = failures
 	return nil
-}
-
-func findGraphDependents(graph gograph.Graph[string], src string) []string {
-	dependsOnPath := gograph.NewVertex(src)
-	res := []string{}
-	for _, v := range graph.EdgesOf(dependsOnPath) {
-		if v.Destination().Label() == src {
-			res = append(res, v.Source().Label())
-		}
-	}
-	return res
-}
-
-func (ig *ImpactGraph) FindDependentsOf(src string) []string {
-	return findGraphDependents(ig.Data, src)
 }
 
 func (ig *ImpactGraph) unserializeResourceMap(resMap map[string]string) map[string]*resource.Resource {

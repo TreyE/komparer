@@ -9,7 +9,6 @@ import (
 
 	"encoding/json"
 
-	"sigs.k8s.io/kustomize/api/analysis"
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 	kyaml "sigs.k8s.io/yaml"
@@ -67,27 +66,12 @@ func statsForEnv(environment string, impactBuilder *internal.ImpactBuilder, pRel
 				panic(lookupErr)
 			}
 			resIdString := rId.String()
-			annos := res.GetAnnotations()
 			impactBuilder.BuiltResource(environment, match, resIdString, res)
 
 			if "ConfigMap" == res.GetKind() {
 				impactBuilder.HasEnvMap(environment, res.GetName(), match, resIdString)
 			}
 
-			if spVal, hasSPKey := annos[analysis.SourcePathsAnnotation]; hasSPKey {
-				sp, spErr := analysis.SourcePathFromString(&spVal)
-				if spErr != nil {
-					panic(spErr)
-				}
-
-				for _, sPath := range sp.Paths {
-					impactBuilder.ResourceDependsOnFile(environment, match, resIdString, sPath)
-					if "ConfigMap" == res.GetKind() {
-						impactBuilder.ConfigMapDependsOnFile(environment, res.GetName(), sPath)
-					}
-				}
-
-			}
 			resMapYaml, _ := res.AsYAML()
 			resMapJson, _ := kyaml.YAMLToJSON(resMapYaml)
 
