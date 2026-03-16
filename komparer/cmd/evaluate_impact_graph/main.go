@@ -117,6 +117,34 @@ func changeIconFor(ir internal.ImpactedResource) string {
 	}
 }
 
+func markdownSummarySection(md *markdown.Markdown, cg internal.ImpactGraph, changesByContent ChangedResources) {
+
+	md.H2("Summary").LF()
+
+	var rows [][]string
+
+	rows = append(rows, []string{"Added", fmt.Sprintf("%d", len(changesByContent.AddedResources))})
+	rows = append(rows, []string{"Removed", fmt.Sprintf("%d", len(changesByContent.RemovedResources))})
+	rows = append(rows, []string{"Modified", fmt.Sprintf("%d", len(changesByContent.ChangedResources))})
+	rows = append(rows, []string{"**Total**", fmt.Sprintf("**%d**", len(changesByContent.ImpactedResources))})
+
+	md.Table(
+		markdown.TableSet{
+			Header:    []string{"Kind", "Count"},
+			Rows:      rows,
+			Alignment: []markdown.TableAlignment{markdown.AlignCenter, markdown.AlignLeft, markdown.AlignRight},
+		},
+	).LF()
+
+	md.PlainText("**Impacted Environments:**").LF()
+	formattedEnvList := make([]string, len(changesByContent.Environments))
+	for i, e := range changesByContent.Environments {
+		formattedEnvList[i] = "**" + e + "**"
+	}
+
+	md.OrderedList(formattedEnvList...).LF()
+}
+
 func main() {
 	var args struct {
 		OldGraphDataPath     string `arg:"positional,required" help:"Path to impact graph for the earlier commit"`
@@ -149,25 +177,14 @@ func main() {
 	if args.Markdown {
 		md := markdown.NewMarkdown(os.Stdout)
 
-		md.H2("Summary").LF()
-
-		md.PlainTextf("**Impacted Resources: %d**", len(changesByContent.ImpactedResources)).LF()
-		md.PlainTextf("**Failed Builds: %d**", len(cg.Failures)).LF()
-
-		md.PlainText("**Impacted Environments:**").LF()
-		formattedEnvList := make([]string, len(changesByContent.Environments))
-		for i, e := range changesByContent.Environments {
-			formattedEnvList[i] = "**" + e + "**"
-		}
-
-		md.OrderedList(formattedEnvList...).LF()
+		markdownSummarySection(md, cg, changesByContent)
 
 		var rows [][]string
 
 		for _, c := range changesByContent.ImpactedResources {
 			rows = append(rows, []string{c.Environment, c.Path, changeIconFor(c) + c.ResourceID})
 		}
-		md.H3("Impacted Resources").LF()
+		md.H2("Impacted Resources").LF()
 
 		md.Table(
 			markdown.TableSet{
@@ -178,12 +195,18 @@ func main() {
 		).LF()
 
 		if len(cg.Failures) > 0 {
-			md.H3("Build Failures")
+			md.H2("Build Failures").LF()
+
+			md.PlainTextf("**Failed: %d**", len(cg.Failures)).LF()
+
+			md.PlainText("<details>").LF()
+			md.PlainText("<summary>Details</summary>").LF()
 			md.LF()
 			for k, v := range cg.Failures {
 				md.H4(k).LF()
 				md.CodeBlocks(markdown.SyntaxHighlightNone, v).LF()
 			}
+			md.PlainText("</details>")
 		}
 
 		md.Build()
